@@ -1,5 +1,3 @@
-const WEBHOOK_URL = process.env.NEXT_PUBLIC_TRACKING_WEBHOOK || '';
-
 function getDeviceType(): string {
   if (typeof window === 'undefined') return 'unknown';
   const w = window.innerWidth;
@@ -19,27 +17,20 @@ function getBasePayload() {
 }
 
 export function track(event: string, data: Record<string, string> = {}) {
-  if (!WEBHOOK_URL) return;
-
   const payload = {
     ...getBasePayload(),
     event,
     ...data,
   };
 
-  // fire-and-forget, 不阻塞用户体验
   try {
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(WEBHOOK_URL, JSON.stringify(payload));
-    } else {
-      fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true,
-      });
-    }
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
   } catch {
-    // 静默失败，不影响用户
+    // 静默失败
   }
 }
