@@ -7,15 +7,24 @@ export async function POST(request: Request) {
   try {
     const body = await request.text();
 
-    const res = await fetch(webhookUrl, {
+    // Google Apps Script 返回 302，需要手动跟随并保持 POST
+    let res = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body,
+      redirect: 'manual',
     });
 
-    // Google Apps Script 302 重定向后返回内容
+    // 跟随重定向（GET 即可，Apps Script 重定向后的 URL 用 GET 返回结果）
+    if (res.status === 302 || res.status === 301) {
+      const location = res.headers.get('location');
+      if (location) {
+        res = await fetch(location);
+      }
+    }
+
     return Response.json({ status: 'ok', upstream: res.status });
-  } catch {
-    return Response.json({ status: 'error' }, { status: 500 });
+  } catch (e) {
+    return Response.json({ status: 'error', message: String(e) }, { status: 500 });
   }
 }
