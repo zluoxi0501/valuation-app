@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   }
 
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 400,
     system: `从用户输入中提取关键信息，输出严格的 JSON，不加任何解释。
 

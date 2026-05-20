@@ -29,14 +29,12 @@ async function readStreamWithBreath(
     const newParagraphEnd = accumulated.lastIndexOf('\n\n');
     if (newParagraphEnd > lastParagraphEnd) {
       lastParagraphEnd = newParagraphEnd;
-      await new Promise((r) => setTimeout(r, 480));
+      await new Promise((r) => setTimeout(r, 300));
     }
   }
 
   return accumulated;
 }
-
-const DEFAULT_BUTTONS = ['有，但一直没说清楚', '没有，现在才想明白', '好像有一点感觉'];
 
 export default function DiagnosisClient() {
   const router = useRouter();
@@ -71,21 +69,23 @@ export default function DiagnosisClient() {
   const startFlow = async (userInput: string) => {
     setPreText('我先整理一下你刚刚提到的东西…');
 
-    let extractedInfo: KeyInfo | null = null;
-    try {
-      const extractRes = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: userInput }),
-      });
-      if (extractRes.ok) {
-        extractedInfo = await extractRes.json();
-        setKeyInfo(extractedInfo);
-        saveJourney({ keyInfo: extractedInfo ?? undefined });
+    // extract 在后台跑，不阻塞主流程
+    const extractPromise = fetch('/api/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: userInput }),
+    }).then(async (res) => {
+      if (res.ok) {
+        const info: KeyInfo = await res.json();
+        setKeyInfo(info);
+        saveJourney({ keyInfo: info });
+        return info;
       }
-    } catch {}
+      return null;
+    }).catch(() => null);
 
-    await new Promise((r) => setTimeout(r, 1200));
+    // 前置语短暂显示后立刻开始诊断
+    await new Promise((r) => setTimeout(r, 600));
     setPreText('');
     setIsStreaming(true);
     setResult('');
@@ -94,7 +94,7 @@ export default function DiagnosisClient() {
       const res = await fetch('/api/diagnosis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: userInput, keyInfo: extractedInfo }),
+        body: JSON.stringify({ input: userInput, keyInfo: null }),
       });
 
       if (!res.ok) throw new Error('request failed');
@@ -102,6 +102,12 @@ export default function DiagnosisClient() {
       const accumulated = await readStreamWithBreath(res.body!, (acc) =>
         setResult(acc)
       );
+
+      // 诊断完了，extract 可能还没回来，等它一下（已经在后台跑了很久了）
+      const extractedInfo = await extractPromise;
+      if (extractedInfo) {
+        setKeyInfo(extractedInfo);
+      }
 
       saveJourney({ diagnosisResult: accumulated });
       setDone(true);
@@ -214,6 +220,11 @@ export default function DiagnosisClient() {
               letterSpacing: '0.01em',
             }}
           >
+            {isStreaming && !result && (
+              <span style={{ color: 'var(--text-muted)', fontSize: '15px', fontStyle: 'italic' }}>
+                正在想<span className="cursor-blink" />
+              </span>
+            )}
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 

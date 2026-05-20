@@ -1,0 +1,16 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/analysis/page": "/analysis",
+  "/api/analysis/route": "/api/analysis",
+  "/api/diagnosis/route": "/api/diagnosis",
+  "/api/direction/route": "/api/direction",
+  "/api/extract/route": "/api/extract",
+  "/api/plan/route": "/api/plan",
+  "/api/refine/route": "/api/refine",
+  "/diagnosis/page": "/diagnosis",
+  "/direction/page": "/direction",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/",
+  "/plan/page": "/plan"
+}

@@ -29,7 +29,7 @@ async function readStreamWithBreath(
     const newParagraphEnd = accumulated.lastIndexOf('\n\n');
     if (newParagraphEnd > lastParagraphEnd) {
       lastParagraphEnd = newParagraphEnd;
-      await new Promise((r) => setTimeout(r, 480));
+      await new Promise((r) => setTimeout(r, 300));
     }
   }
 
@@ -72,7 +72,7 @@ export default function PlanClient() {
     chosenDirection?: string;
   }) => {
     setPreText('好，我把这些整理成一个草图…');
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 600));
     setPreText('');
     setIsStreaming(true);
     setResult('');
@@ -194,6 +194,11 @@ export default function PlanClient() {
               letterSpacing: '0.01em',
             }}
           >
+            {isStreaming && !result && (
+              <span style={{ color: 'var(--text-muted)', fontSize: '15px', fontStyle: 'italic' }}>
+                正在想<span className="cursor-blink" />
+              </span>
+            )}
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 
