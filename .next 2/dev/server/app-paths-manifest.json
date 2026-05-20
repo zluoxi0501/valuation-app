@@ -1,4 +1,0 @@
-{
-  "/api/diagnosis/route": "app/api/diagnosis/route.js",
-  "/api/extract/route": "app/api/extract/route.js"
-}
