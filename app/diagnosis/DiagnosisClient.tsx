@@ -7,6 +7,7 @@ import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import ContinueButton from '@/components/ContinueButton';
 import { getJourney, saveJourney, KeyInfo } from '@/lib/journey';
+import { track } from '@/lib/tracking';
 
 async function readStreamWithBreath(
   body: ReadableStream<Uint8Array>,
@@ -124,6 +125,7 @@ export default function DiagnosisClient() {
   const handleMicroSelect = (option: string) => {
     setMicroAnswer(option);
     saveJourney({ microAnswer: option });
+    track('micro_answer', { current_step: 'diagnosis', selected_feeling: option });
   };
 
   return (

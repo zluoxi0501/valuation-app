@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PageWrapper from '@/components/PageWrapper';
 import ContinueButton from '@/components/ContinueButton';
 import { clearJourney, saveJourney } from '@/lib/journey';
+import { track } from '@/lib/tracking';
 
 const EXAMPLES = [
   '我越来越不知道现在学的东西以后有没有用',
@@ -29,6 +30,7 @@ export default function HomeClient() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    track('page_view', { current_step: 'home' });
     const timer = setInterval(() => {
       setExampleIndex((i) => (i + 1) % EXAMPLES.length);
     }, 3500);
@@ -37,6 +39,7 @@ export default function HomeClient() {
 
   const handleStart = () => {
     if (!input.trim()) return;
+    track('start_diagnosis', { current_step: 'home', user_input: input.trim() });
     clearJourney();
     saveJourney({ input: input.trim(), createdAt: Date.now() });
     router.push('/diagnosis');

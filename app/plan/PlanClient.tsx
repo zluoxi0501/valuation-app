@@ -6,6 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import { getJourney, saveJourney, clearJourney } from '@/lib/journey';
+import { track } from '@/lib/tracking';
+
+const HIT_OPTIONS = ['很说中', '有一点', '没太说中'];
 
 async function readStreamWithBreath(
   body: ReadableStream<Uint8Array>,
@@ -39,8 +42,13 @@ export default function PlanClient() {
   const [result, setResult] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [done, setDone] = useState(false);
+  const [hitScore, setHitScore] = useState('');
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   useEffect(() => {
+    track('page_view', { current_step: 'plan' });
+
     const journey = getJourney();
     if (!journey?.input || !journey?.directionResult) {
       router.replace('/');
@@ -90,12 +98,34 @@ export default function PlanClient() {
 
       saveJourney({ planResult: accumulated });
       setDone(true);
+      track('plan_complete', { current_step: 'plan' });
     } catch {
       setResult('出了点问题，请刷新页面重试。');
       setDone(true);
     } finally {
       setIsStreaming(false);
     }
+  };
+
+  const handleHitSelect = (score: string) => {
+    setHitScore(score);
+    const journey = getJourney();
+    track('hit_score', {
+      current_step: 'plan',
+      hit_score: score,
+      user_input: journey?.input ?? '',
+    });
+  };
+
+  const handleFeedbackSubmit = () => {
+    const journey = getJourney();
+    track('feedback', {
+      current_step: 'plan',
+      hit_score: hitScore,
+      feedback_text: feedbackText,
+      user_input: journey?.input ?? '',
+    });
+    setFeedbackSent(true);
   };
 
   const handleRestart = () => {
@@ -176,11 +206,12 @@ export default function PlanClient() {
                 transition={{ delay: 0.5, duration: 0.5 }}
                 style={{ marginTop: '64px' }}
               >
+                {/* 结语 */}
                 <div
                   style={{
                     borderLeft: '2px solid var(--accent)',
                     paddingLeft: '20px',
-                    marginBottom: '40px',
+                    marginBottom: '48px',
                   }}
                 >
                   <p
@@ -199,6 +230,146 @@ export default function PlanClient() {
                   </p>
                 </div>
 
+                {/* 反馈区 — 极简，自然出现 */}
+                {!feedbackSent ? (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8, duration: 0.6 }}
+                    style={{ marginBottom: '40px' }}
+                  >
+                    {/* 命中评分 */}
+                    {!hitScore ? (
+                      <div>
+                        <p
+                          style={{
+                            fontSize: '14px',
+                            color: 'var(--text-secondary)',
+                            marginBottom: '14px',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          这次分析有没有说中你？
+                        </p>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          {HIT_OPTIONS.map((opt) => (
+                            <button
+                              key={opt}
+                              onClick={() => handleHitSelect(opt)}
+                              style={{
+                                padding: '10px 18px',
+                                fontSize: '13px',
+                                color: 'var(--text-secondary)',
+                                backgroundColor: '#fff',
+                                border: '1px solid var(--border)',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                transition: 'border-color 0.15s, color 0.15s',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                                e.currentTarget.style.color = 'var(--accent)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.color = 'var(--text-secondary)';
+                              }}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      /* 开放反馈 */
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4 }}
+                      >
+                        <p
+                          style={{
+                            fontSize: '14px',
+                            color: 'var(--text-secondary)',
+                            marginBottom: '12px',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          哪句话最打动你？哪句话不准？
+                        </p>
+                        <textarea
+                          value={feedbackText}
+                          onChange={(e) => setFeedbackText(e.target.value)}
+                          rows={3}
+                          placeholder="随便说几句，也可以留空"
+                          style={{
+                            width: '100%',
+                            padding: '12px 14px',
+                            fontSize: '14px',
+                            lineHeight: 1.6,
+                            color: 'var(--text-primary)',
+                            backgroundColor: '#fff',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            resize: 'none',
+                            outline: 'none',
+                            fontFamily: 'inherit',
+                            marginBottom: '14px',
+                          }}
+                          onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; }}
+                          onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                        />
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                          <button
+                            onClick={handleFeedbackSubmit}
+                            style={{
+                              padding: '10px 22px',
+                              fontSize: '13px',
+                              color: '#fff',
+                              backgroundColor: 'var(--accent)',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            提交
+                          </button>
+                          <button
+                            onClick={() => { setFeedbackSent(true); track('feedback_skip', { current_step: 'plan', hit_score: hitScore }); }}
+                            style={{
+                              padding: '10px',
+                              fontSize: '13px',
+                              color: 'var(--text-muted)',
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            跳过
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4 }}
+                    style={{
+                      fontSize: '13px',
+                      color: 'var(--text-muted)',
+                      marginBottom: '40px',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    谢谢你的反馈。
+                  </motion.p>
+                )}
+
                 <button
                   onClick={handleRestart}
                   style={{
@@ -214,10 +385,10 @@ export default function PlanClient() {
                     textUnderlineOffset: '3px',
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget).style.color = 'var(--text-secondary)';
+                    e.currentTarget.style.color = 'var(--text-secondary)';
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget).style.color = 'var(--text-muted)';
+                    e.currentTarget.style.color = 'var(--text-muted)';
                   }}
                 >
                   重新开始

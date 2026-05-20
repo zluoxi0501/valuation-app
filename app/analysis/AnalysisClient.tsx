@@ -7,6 +7,7 @@ import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import ContinueButton from '@/components/ContinueButton';
 import { getJourney, saveJourney } from '@/lib/journey';
+import { track } from '@/lib/tracking';
 
 const ANALYSIS_OPTIONS = [
   '是，越想越觉得是这样',
@@ -188,7 +189,7 @@ export default function AnalysisClient() {
                   {ANALYSIS_OPTIONS.map((opt) => (
                     <button
                       key={opt}
-                      onClick={() => setConfirmed(true)}
+                      onClick={() => { setConfirmed(true); track('analysis_confirm', { current_step: 'analysis', selected_feeling: opt }); }}
                       style={{
                         textAlign: 'left',
                         padding: '13px 18px',
