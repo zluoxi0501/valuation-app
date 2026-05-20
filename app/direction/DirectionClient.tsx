@@ -6,7 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import ContinueButton from '@/components/ContinueButton';
+import CorrectBlock from '@/components/CorrectBlock';
 import { getJourney, saveJourney } from '@/lib/journey';
+import { track } from '@/lib/tracking';
 
 async function readStreamWithBreath(
   body: ReadableStream<Uint8Array>,
@@ -40,6 +42,8 @@ export default function DirectionClient() {
   const [result, setResult] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [done, setDone] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
   const [chosenDirection, setChosenDirection] = useState('');
   const [showInput, setShowInput] = useState(false);
 
@@ -54,6 +58,7 @@ export default function DirectionClient() {
       setResult(journey.directionResult);
       setChosenDirection(journey.chosenDirection ?? '');
       setDone(true);
+      setConfirmed(true);
       return;
     }
 
@@ -92,6 +97,47 @@ export default function DirectionClient() {
       setDone(true);
     } finally {
       setIsStreaming(false);
+    }
+  };
+
+  const handleConfirm = () => {
+    setConfirmed(true);
+    track('direction_confirmed', { current_step: 'direction' });
+  };
+
+  const handleRefine = async (correction: string) => {
+    const journey = getJourney();
+    setIsRefining(true);
+    setIsStreaming(true);
+    setResult('');
+
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'direction',
+          previousResult: result,
+          userCorrection: correction,
+          fullContext: `${journey?.input}\n\n${journey?.diagnosisResult}\n\n${journey?.analysisResult}`,
+        }),
+      });
+
+      if (!res.ok) throw new Error('refine failed');
+
+      const accumulated = await readStreamWithBreath(res.body!, (acc) =>
+        setResult(acc)
+      );
+
+      saveJourney({ directionResult: accumulated });
+      setDone(true);
+      setConfirmed(true);
+    } catch {
+      setResult('出了点问题，请刷新页面重试。');
+      setDone(true);
+    } finally {
+      setIsStreaming(false);
+      setIsRefining(false);
     }
   };
 
@@ -168,14 +214,24 @@ export default function DirectionClient() {
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 
+          {/* 确认 / 纠偏 */}
+          {done && !confirmed && !isRefining && (
+            <CorrectBlock
+              step="direction"
+              onConfirm={handleConfirm}
+              onRefine={handleRefine}
+            />
+          )}
+
+          {/* 确认后：选方向 → 继续 */}
           <AnimatePresence>
-            {done && !showInput && (
+            {done && confirmed && !isStreaming && !showInput && (
               <motion.div
                 key="ask"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.5 }}
-                style={{ marginTop: '56px' }}
+                transition={{ duration: 0.4 }}
+                style={{ marginTop: '48px' }}
               >
                 <p
                   style={{
@@ -185,7 +241,7 @@ export default function DirectionClient() {
                     lineHeight: 1.7,
                   }}
                 >
-                  看完这两个方向，有没有哪个让你觉得"这个我想多想想"？
+                  有没有哪个方向让你觉得"这个我想多想想"？
                 </p>
                 <ContinueButton onClick={handleContinue} label="有，继续" />
               </motion.div>
@@ -210,7 +266,7 @@ export default function DirectionClient() {
                     lineHeight: 1.7,
                   }}
                 >
-                  你现在更想从哪个方向开始？（写几个字就行，或者留空也可以）
+                  你想从哪个方向开始？（写几个字就行，或者留空）
                 </label>
                 <textarea
                   value={chosenDirection}

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import ContinueButton from '@/components/ContinueButton';
+import CorrectBlock from '@/components/CorrectBlock';
 import { getJourney, saveJourney, KeyInfo } from '@/lib/journey';
 import { track } from '@/lib/tracking';
 
@@ -45,8 +46,8 @@ export default function DiagnosisClient() {
   const [result, setResult] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [done, setDone] = useState(false);
-  const [microAnswer, setMicroAnswer] = useState('');
-  const [microButtons, setMicroButtons] = useState<string[]>(DEFAULT_BUTTONS);
+  const [confirmed, setConfirmed] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
 
   useEffect(() => {
     const journey = getJourney();
@@ -58,12 +59,9 @@ export default function DiagnosisClient() {
 
     if (journey.diagnosisResult) {
       setResult(journey.diagnosisResult);
-      setMicroAnswer(journey.microAnswer ?? '');
       setKeyInfo(journey.keyInfo ?? null);
-      if (journey.keyInfo?.microButtons?.length) {
-        setMicroButtons(journey.keyInfo.microButtons);
-      }
       setDone(true);
+      setConfirmed(true);
       return;
     }
 
@@ -71,7 +69,6 @@ export default function DiagnosisClient() {
   }, []);
 
   const startFlow = async (userInput: string) => {
-    // 第一步：并行提取关键信息，同时显示前置语
     setPreText('我先整理一下你刚刚提到的东西…');
 
     let extractedInfo: KeyInfo | null = null;
@@ -84,16 +81,10 @@ export default function DiagnosisClient() {
       if (extractRes.ok) {
         extractedInfo = await extractRes.json();
         setKeyInfo(extractedInfo);
-        if (extractedInfo?.microButtons?.length) {
-          setMicroButtons(extractedInfo.microButtons);
-        }
         saveJourney({ keyInfo: extractedInfo ?? undefined });
       }
-    } catch {
-      // extract 失败不影响主流程
-    }
+    } catch {}
 
-    // 至少等 1.2s 让前置语显示完
     await new Promise((r) => setTimeout(r, 1200));
     setPreText('');
     setIsStreaming(true);
@@ -122,10 +113,44 @@ export default function DiagnosisClient() {
     }
   };
 
-  const handleMicroSelect = (option: string) => {
-    setMicroAnswer(option);
-    saveJourney({ microAnswer: option });
-    track('micro_answer', { current_step: 'diagnosis', selected_feeling: option });
+  const handleConfirm = () => {
+    setConfirmed(true);
+    track('diagnosis_confirmed', { current_step: 'diagnosis' });
+  };
+
+  const handleRefine = async (correction: string) => {
+    setIsRefining(true);
+    setIsStreaming(true);
+    setResult('');
+
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'diagnosis',
+          previousResult: result,
+          userCorrection: correction,
+          fullContext: input,
+        }),
+      });
+
+      if (!res.ok) throw new Error('refine failed');
+
+      const accumulated = await readStreamWithBreath(res.body!, (acc) =>
+        setResult(acc)
+      );
+
+      saveJourney({ diagnosisResult: accumulated });
+      setDone(true);
+      setConfirmed(true);
+    } catch {
+      setResult('出了点问题，请刷新页面重试。');
+      setDone(true);
+    } finally {
+      setIsStreaming(false);
+      setIsRefining(false);
+    }
   };
 
   return (
@@ -192,83 +217,25 @@ export default function DiagnosisClient() {
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 
-          {/* 微追问 */}
-          <AnimatePresence>
-            {done && !microAnswer && (
-              <motion.div
-                key="micro"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
-                style={{ marginTop: '52px' }}
-              >
-                <p
-                  style={{
-                    fontSize: '15px',
-                    color: 'var(--text-secondary)',
-                    marginBottom: '20px',
-                    lineHeight: 1.7,
-                  }}
-                >
-                  你以前有认真意识到这一点吗？
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {microButtons.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => handleMicroSelect(opt)}
-                      style={{
-                        textAlign: 'left',
-                        padding: '13px 18px',
-                        fontSize: '14px',
-                        color: 'var(--text-secondary)',
-                        backgroundColor: '#fff',
-                        border: '1px solid var(--border)',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        lineHeight: 1.5,
-                        transition: 'border-color 0.15s, color 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        const t = e.currentTarget;
-                        t.style.borderColor = 'var(--accent)';
-                        t.style.color = 'var(--accent)';
-                      }}
-                      onMouseLeave={(e) => {
-                        const t = e.currentTarget;
-                        t.style.borderColor = 'var(--border)';
-                        t.style.color = 'var(--text-secondary)';
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* 确认 / 纠偏 */}
+          {done && !confirmed && !isRefining && (
+            <CorrectBlock
+              step="diagnosis"
+              onConfirm={handleConfirm}
+              onRefine={handleRefine}
+            />
+          )}
 
-          {/* 选完后继续 */}
+          {/* 确认后继续 */}
           <AnimatePresence>
-            {done && microAnswer && (
+            {done && confirmed && !isStreaming && (
               <motion.div
                 key="continue"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
-                style={{ marginTop: '52px' }}
+                style={{ marginTop: '48px' }}
               >
-                <p
-                  style={{
-                    fontSize: '13px',
-                    color: 'var(--text-muted)',
-                    marginBottom: '24px',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  "{microAnswer}"
-                </p>
                 <p
                   style={{
                     fontSize: '15px',

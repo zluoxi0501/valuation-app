@@ -6,14 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import PageWrapper from '@/components/PageWrapper';
 import StreamingText from '@/components/StreamingText';
 import ContinueButton from '@/components/ContinueButton';
+import CorrectBlock from '@/components/CorrectBlock';
 import { getJourney, saveJourney } from '@/lib/journey';
 import { track } from '@/lib/tracking';
-
-const ANALYSIS_OPTIONS = [
-  '是，越想越觉得是这样',
-  '有点道理，但不完全是',
-  '说不上来，但比之前清楚了一点',
-];
 
 async function readStreamWithBreath(
   body: ReadableStream<Uint8Array>,
@@ -48,6 +43,7 @@ export default function AnalysisClient() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [done, setDone] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
 
   useEffect(() => {
     const journey = getJourney();
@@ -98,6 +94,47 @@ export default function AnalysisClient() {
       setDone(true);
     } finally {
       setIsStreaming(false);
+    }
+  };
+
+  const handleConfirm = () => {
+    setConfirmed(true);
+    track('analysis_confirmed', { current_step: 'analysis' });
+  };
+
+  const handleRefine = async (correction: string) => {
+    const journey = getJourney();
+    setIsRefining(true);
+    setIsStreaming(true);
+    setResult('');
+
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'analysis',
+          previousResult: result,
+          userCorrection: correction,
+          fullContext: `${journey?.input}\n\n${journey?.diagnosisResult}`,
+        }),
+      });
+
+      if (!res.ok) throw new Error('refine failed');
+
+      const accumulated = await readStreamWithBreath(res.body!, (acc) =>
+        setResult(acc)
+      );
+
+      saveJourney({ analysisResult: accumulated });
+      setDone(true);
+      setConfirmed(true);
+    } catch {
+      setResult('出了点问题，请刷新页面重试。');
+      setDone(true);
+    } finally {
+      setIsStreaming(false);
+      setIsRefining(false);
     }
   };
 
@@ -165,70 +202,22 @@ export default function AnalysisClient() {
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 
-          {/* 追问确认 */}
-          <AnimatePresence>
-            {done && !confirmed && (
-              <motion.div
-                key="confirm"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
-                style={{ marginTop: '52px' }}
-              >
-                <p
-                  style={{
-                    fontSize: '15px',
-                    color: 'var(--text-secondary)',
-                    marginBottom: '20px',
-                    lineHeight: 1.7,
-                  }}
-                >
-                  你觉得说到点上了吗？
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {ANALYSIS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => { setConfirmed(true); track('analysis_confirm', { current_step: 'analysis', selected_feeling: opt }); }}
-                      style={{
-                        textAlign: 'left',
-                        padding: '13px 18px',
-                        fontSize: '14px',
-                        color: 'var(--text-secondary)',
-                        backgroundColor: '#fff',
-                        border: '1px solid var(--border)',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        lineHeight: 1.5,
-                        transition: 'border-color 0.15s, color 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--accent)';
-                        e.currentTarget.style.color = 'var(--accent)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = 'var(--border)';
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                      }}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {done && !confirmed && !isRefining && (
+            <CorrectBlock
+              step="analysis"
+              onConfirm={handleConfirm}
+              onRefine={handleRefine}
+            />
+          )}
 
-          {/* 确认后继续 */}
           <AnimatePresence>
-            {done && confirmed && (
+            {done && confirmed && !isStreaming && (
               <motion.div
                 key="continue"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
-                style={{ marginTop: '52px' }}
+                style={{ marginTop: '48px' }}
               >
                 <p
                   style={{
