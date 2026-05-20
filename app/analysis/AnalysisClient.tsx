@@ -199,16 +199,6 @@ export default function AnalysisClient() {
               letterSpacing: '0.01em',
             }}
           >
-            {isStreaming && !result && (
-              <span style={{ color: "var(--text-muted)", fontSize: "15px", fontStyle: "italic" }}>
-                正在想<span className="cursor-blink" />
-              </span>
-            )}
-            {isStreaming && !result && (
-              <span style={{ color: 'var(--text-muted)', fontSize: '15px', fontStyle: 'italic' }}>
-                正在想<span className="cursor-blink" />
-              </span>
-            )}
             <StreamingText text={result} isStreaming={isStreaming} />
           </div>
 

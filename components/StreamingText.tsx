@@ -41,7 +41,7 @@ export default function StreamingText({ text, isStreaming, className = '' }: Str
           </span>
         );
       })}
-      {isStreaming && <span className="cursor-blink" />}
+      {isStreaming && <span style={{ opacity: 0 }} />}
       <span ref={endRef} />
     </span>
   );
